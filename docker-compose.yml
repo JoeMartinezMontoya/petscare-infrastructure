@@ -1,0 +1,31 @@
+version: '3.8'
+services:
+  db:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: example
+      MYSQL_DATABASE: petscare
+    ports:
+      - '3306:3306'
+
+  users-service:
+    build: ./petscare-users-service
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: mysql://root:example@db:3306/petscare
+    ports:
+      - '8000:8000' # Symfony API
+    volumes:
+      - ./petscare-users-service:/app
+    command: php -S 0.0.0.0:8000 -t public
+
+  frontend:
+    build: ./petscare-frontend
+    ports:
+      - '3000:3000' # Port de Next.js
+    volumes:
+      - ./petscare-frontend:/app
+      - /app/node_modules
+    depends_on:
+      - users-service
