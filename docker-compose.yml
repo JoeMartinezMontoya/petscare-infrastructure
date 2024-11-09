@@ -1,31 +1,103 @@
-version: '3.8'
+networks:
+  petscare-network:
+    driver: bridge
+
 services:
-  db:
-    image: mysql:8
-    environment:
-      MYSQL_ROOT_PASSWORD: example
-      MYSQL_DATABASE: petscare
+  # Microservice Users
+  petscare-users-service:
+    image: php:8.2-apache
+    container_name: petscare-users-service
+    build:
+      context: ../petscare-users-service
     ports:
-      - '3306:3306'
-
-  users-service:
-    build: ./petscare-users-service
+      - '8081:80'
+    volumes:
+      - ../petscare-users-service:/var/www/html
+    environment:
+      DATABASE_URL: mysql://root:rootpassword@petscare-users:3306/petscare-users
     depends_on:
-      - db
-    environment:
-      DATABASE_URL: mysql://root:example@db:3306/petscare
-    ports:
-      - '8000:8000' # Symfony API
-    volumes:
-      - ./petscare-users-service:/app
-    command: php -S 0.0.0.0:8000 -t public
+      - petscare-users
+    networks:
+      - petscare-network
+    command: bash -c "composer run-script post-install-cmd && apache2-foreground"
 
-  frontend:
-    build: ./petscare-frontend
+  # Microservice Authentication
+  petscare-auth-service:
+    image: php:8.2-apache
+    container_name: petscare-auth-service
+    build:
+      context: ../petscare-auth-service
     ports:
-      - '3000:3000' # Port de Next.js
+      - '8082:80'
     volumes:
-      - ./petscare-frontend:/app
+      - ../petscare-auth-service:/var/www/html
+    environment:
+      DATABASE_URL: mysql://root:rootpassword@petscare-users:3306/petscare-users
+    depends_on:
+      - petscare-users
+    networks:
+      - petscare-network
+    command: bash -c "composer install && apache2-foreground"
+
+  # Base de données MariaDB pour Users
+  petscare-users:
+    image: mariadb:latest
+    container_name: petscare-users
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+      MYSQL_DATABASE: petscare-users
+    volumes:
+      - petscare-users-data:/var/lib/mysql
+    networks:
+      - petscare-network
+
+  # Frontend en Next.js
+  petscare-frontend:
+    image: node:18-alpine
+    container_name: petscare-frontend
+    build:
+      context: ../petscare-frontend
+    command: npm run dev # Démarre le serveur de développement
+    ports:
+      - '3000:3000' # Port externe 3000 pour Next.js
+    volumes:
+      - ../petscare-frontend:/app
       - /app/node_modules
-    depends_on:
-      - users-service
+    working_dir: /app
+    environment:
+      - NEXT_PUBLIC_API_URL=http://petscare-users-service:80 # URL de l'API Users
+    networks:
+      - petscare-network
+
+  # Microservice Pets
+  # petscare-pets-service:
+  #   image: php:8.2-apache
+  #   container_name: petscare-pets-service
+  #   build:
+  #     context: ./petscare-pets-service
+  #   ports:
+  #     - '8082:80'
+  #   volumes:
+  #     - ./petscare-pets-service:/var/www/html
+  #   environment:
+  #     DATABASE_URL: mysql://user:password@pets-db:3306/pets_db
+  #   depends_on:
+  #     - pets-db
+
+  # Base de données MariaDB pour Pets
+  # pets-db:
+  #   image: mariadb:latest
+  #   container_name: pets-db
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: rootpassword
+  #     MYSQL_USER: user
+  #     MYSQL_PASSWORD: password
+  #     MYSQL_DATABASE: pets_db
+  #   volumes:
+  #     - pets-db-data:/var/lib/mysql
+
+volumes:
+  petscare-users-data:
+  # pets-db-data:
