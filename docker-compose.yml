@@ -55,6 +55,20 @@ services:
     networks:
       - petscare-network
 
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phpmyadmin
+    depends_on:
+      - petscare-users
+    ports:
+      - '8080:80' # PHPMyAdmin accessible sur http://localhost:8080
+    environment:
+      PMA_HOST: petscare-users
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: rootpassword # Le mot de passe root de ton conteneur MariaDB
+    networks:
+      - petscare-network
+
   # Frontend en Next.js
   petscare-frontend:
     image: node:18-alpine
