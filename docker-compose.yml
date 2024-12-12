@@ -13,13 +13,14 @@ services:
       - '8081:80'
     volumes:
       - ../petscare-users-service:/var/www/html
+      - ../petscare-users-service/docker/apache/000-default.conf:/etc/apache2/sites-available/000-default.conf
     environment:
       DATABASE_URL: mysql://root:rootpassword@petscare-users:3306/petscare-users
     depends_on:
       - petscare-users
     networks:
       - petscare-network
-    command: bash -c "composer run-script post-install-cmd && apache2-foreground"
+    command: bash -c "a2ensite 000-default.conf && a2enmod rewrite && composer run-script post-install-cmd && apache2-foreground"
 
   # Microservice Authentication
   petscare-auth-service:
@@ -31,13 +32,14 @@ services:
       - '8082:80'
     volumes:
       - ../petscare-auth-service:/var/www/html
+      - ../petscare-auth-service/docker/apache/000-default.conf:/etc/apache2/sites-available/000-default.conf
     environment:
       DATABASE_URL: mysql://root:rootpassword@petscare-users:3306/petscare-users
     depends_on:
       - petscare-users
     networks:
       - petscare-network
-    command: bash -c "composer install && apache2-foreground"
+    command: bash -c "a2ensite 000-default.conf && a2enmod rewrite && composer run-script post-install-cmd && apache2-foreground"
 
   # Base de données MariaDB pour Users
   petscare-users:
@@ -50,6 +52,20 @@ services:
       MYSQL_DATABASE: petscare-users
     volumes:
       - petscare-users-data:/var/lib/mysql
+    networks:
+      - petscare-network
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phpmyadmin
+    depends_on:
+      - petscare-users
+    ports:
+      - '8080:80' # PHPMyAdmin accessible sur http://localhost:8080
+    environment:
+      PMA_HOST: petscare-users
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: rootpassword # Le mot de passe root de ton conteneur MariaDB
     networks:
       - petscare-network
 
@@ -67,7 +83,8 @@ services:
       - /app/node_modules
     working_dir: /app
     environment:
-      - NEXT_PUBLIC_API_URL=http://petscare-users-service:80 # URL de l'API Users
+      - NEXT_PUBLIC_AUTH_API_URL=http://localhost:8082
+      - NEXT_PUBLIC_USERS_API_URL=http://localhost:8081
     networks:
       - petscare-network
 
