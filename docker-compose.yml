@@ -3,7 +3,45 @@ networks:
     driver: bridge
 
 services:
-  # Microservice Users
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    command:
+      - "--api.insecure=true" 
+      - "--providers.docker=true" 
+      - "--entrypoints.web.address=:80" 
+    ports:
+      - "80:80" 
+      - "8080:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - petscare-network
+
+  petscare-frontend:
+    image: node:18-alpine
+    container_name: petscare-frontend
+    restart: always
+    build:
+      context: ../petscare-frontend
+    command: npm run dev
+    ports:
+      - '3000:3000'
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`petscare.localhost`)"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+    volumes:
+      - ../petscare-frontend:/app
+      - /app/node_modules
+    working_dir: /app
+    environment:
+      - NEXT_PUBLIC_PETS_API_URL=http://pets.localhost
+      - NEXT_PUBLIC_AUTH_API_URL=http://auth.localhost
+      - NEXT_PUBLIC_USERS_API_URL=http://users.localhost
+    networks:
+      - petscare-network
+
   petscare-users-service:
     image: php:8.2-apache
     container_name: petscare-users-service
@@ -11,6 +49,10 @@ services:
       context: ../petscare-users-service
     ports:
       - '8081:80'
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.users.rule=Host(`users.localhost`)"
+      - "traefik.http.services.users.loadbalancer.server.port=80"
     volumes:
       - ../petscare-users-service:/var/www/html
       - ../petscare-users-service/docker/apache/000-default.conf:/etc/apache2/sites-available/000-default.conf
@@ -22,7 +64,6 @@ services:
       - petscare-network
     command: bash -c "a2ensite 000-default.conf && a2enmod rewrite && composer run-script post-install-cmd && apache2-foreground"
 
-  # Microservice Authentication
   petscare-auth-service:
     image: php:8.2-apache
     container_name: petscare-auth-service
@@ -30,6 +71,10 @@ services:
       context: ../petscare-auth-service
     ports:
       - '8082:80'
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.auth.rule=Host(`auth.localhost`)"
+      - "traefik.http.services.auth.loadbalancer.server.port=80"
     volumes:
       - ../petscare-auth-service:/var/www/html
       - ../petscare-auth-service/docker/apache/000-default.conf:/etc/apache2/sites-available/000-default.conf
@@ -41,19 +86,27 @@ services:
       - petscare-network
     command: bash -c "a2ensite 000-default.conf && a2enmod rewrite && composer run-script post-install-cmd && apache2-foreground"
 
-  # Base de données MariaDB pour Users
-  petscare-users:
-    image: mariadb:latest
-    container_name: petscare-users
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_USER: user
-      MYSQL_PASSWORD: password
-      MYSQL_DATABASE: petscare-users
-    volumes:
-      - petscare-users-data:/var/lib/mysql
-    networks:
-      - petscare-network
+  petscare-pets-service:
+      image: php:8.2-apache
+      container_name: petscare-pets-service
+      build:
+        context: ../petscare-pets-service
+      ports:
+        - '8083:80'
+      labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pets.rule=Host(`pets.localhost`)"
+      - "traefik.http.services.pets.loadbalancer.server.port=80"
+      volumes:
+        - ../petscare-pets-service:/var/www/html
+        - ../petscare-pets-service/docker/apache/000-default.conf:/etc/apache2/sites-available/000-default.conf
+      environment:
+        DATABASE_URL: mysql://root:rootpassword@petscare-pets:3306/petscare-pets
+      depends_on:
+        - petscare-pets
+      networks:
+        - petscare-network
+      command: bash -c "a2ensite 000-default.conf && a2enmod rewrite && composer run-script post-install-cmd && apache2-foreground"
 
   phpmyadmin:
     image: phpmyadmin:latest
@@ -61,60 +114,42 @@ services:
     depends_on:
       - petscare-users
     ports:
-      - '8080:80' # PHPMyAdmin accessible sur http://localhost:8080
+      - '8084:80'
     environment:
-      PMA_HOST: petscare-users
+      PMA_HOSTS: petscare-users, petscare-pets
       PMA_PORT: 3306
-      MYSQL_ROOT_PASSWORD: rootpassword # Le mot de passe root de ton conteneur MariaDB
+      PMA_USER: root
+      PMA_PASSWORD: rootpassword
+      MYSQL_ROOT_PASSWORD: rootpassword 
     networks:
       - petscare-network
-
-  # Frontend en Next.js
-  petscare-frontend:
-    image: node:18-alpine
-    container_name: petscare-frontend
-    build:
-      context: ../petscare-frontend
-    command: npm run dev # Démarre le serveur de développement
-    ports:
-      - '3000:3000' # Port externe 3000 pour Next.js
-    volumes:
-      - ../petscare-frontend:/app
-      - /app/node_modules
-    working_dir: /app
+    
+  petscare-users:
+    image: mariadb:latest
+    container_name: petscare-users
     environment:
-      - NEXT_PUBLIC_AUTH_API_URL=http://localhost:8082
-      - NEXT_PUBLIC_USERS_API_URL=http://localhost:8081
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_USER: user
+      MYSQL_PASSWORD: rootpassword
+      MYSQL_DATABASE: petscare-users
+    volumes:
+      - petscare-users-data:/var/lib/mysql
     networks:
       - petscare-network
-
-  # Microservice Pets
-  # petscare-pets-service:
-  #   image: php:8.2-apache
-  #   container_name: petscare-pets-service
-  #   build:
-  #     context: ./petscare-pets-service
-  #   ports:
-  #     - '8082:80'
-  #   volumes:
-  #     - ./petscare-pets-service:/var/www/html
-  #   environment:
-  #     DATABASE_URL: mysql://user:password@pets-db:3306/pets_db
-  #   depends_on:
-  #     - pets-db
-
-  # Base de données MariaDB pour Pets
-  # pets-db:
-  #   image: mariadb:latest
-  #   container_name: pets-db
-  #   environment:
-  #     MYSQL_ROOT_PASSWORD: rootpassword
-  #     MYSQL_USER: user
-  #     MYSQL_PASSWORD: password
-  #     MYSQL_DATABASE: pets_db
-  #   volumes:
-  #     - pets-db-data:/var/lib/mysql
+ 
+  petscare-pets:
+    image: mariadb:latest
+    container_name: petscare-pets
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_USER: user
+      MYSQL_PASSWORD: rootpassword
+      MYSQL_DATABASE: petscare-pets
+    volumes:
+      - petscare-pets-data:/var/lib/mysql
+    networks:
+      - petscare-network
 
 volumes:
   petscare-users-data:
-  # pets-db-data:
+  petscare-pets-data:
