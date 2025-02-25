@@ -56,9 +56,9 @@ services:
       - petscare-network
     command: bash -c "a2ensite 000-default.conf && a2enmod rewrite && composer run-script post-install-cmd && apache2-foreground"
 
-  petscare-auth-service:
+  auth-service:
     image: php:8.2-apache
-    container_name: petscare-auth-service
+    container_name: auth-service
     build:
       context: ../petscare-auth-service
     labels:
