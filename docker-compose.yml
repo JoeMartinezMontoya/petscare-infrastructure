@@ -34,9 +34,9 @@ services:
     networks:
       - petscare-network
 
-  petscare-users-service:
+  users-service:
     image: php:8.2-apache
-    container_name: petscare-users-service
+    container_name: users-service
     build:
       context: ../petscare-users-service
     labels:
