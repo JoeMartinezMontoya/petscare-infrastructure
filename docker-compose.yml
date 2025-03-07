@@ -76,9 +76,9 @@ services:
       - petscare-network
     command: bash -c "a2ensite 000-default.conf && a2enmod rewrite && composer run-script post-install-cmd && apache2-foreground"
 
-  petscare-pets-service:
+  pets-service:
       image: php:8.2-apache
-      container_name: petscare-pets-service
+      container_name: pets-service
       build:
         context: ../petscare-pets-service
       labels:
@@ -87,8 +87,6 @@ services:
       volumes:
         - ../petscare-pets-service:/var/www/html
         - ../petscare-pets-service/docker/apache/000-default.conf:/etc/apache2/sites-available/000-default.conf
-      environment:
-        DATABASE_URL: mysql://root:rootpassword@petscare-pets:3306/petscare-pets
       depends_on:
         - petscare-pets
       networks:
