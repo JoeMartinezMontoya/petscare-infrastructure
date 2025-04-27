@@ -6,7 +6,6 @@ services:
   redis:
     image: redis:latest
     container_name: redis
-    restart: unless-stopped
     ports:
       - "6379:6379"
     networks:
@@ -18,7 +17,6 @@ services:
   redis-commander:
     image: rediscommander/redis-commander:latest
     container_name: redis-commander
-    restart: unless-stopped
     environment:
       - REDIS_HOSTS=local:redis:6379
     ports:
@@ -27,6 +25,7 @@ services:
       - redis
     networks:
       - petscare-network
+      
   traefik:
     image: traefik:v3.0
     container_name: traefik
@@ -45,16 +44,15 @@ services:
   frontend:
     image: node:18-alpine
     container_name: frontend
-    restart: unless-stopped
     build:
-      context: ../petscare-frontend
+      context: ../../petscare-frontend
     ports:
       - '3000:3000'
     labels:
       - "traefik.http.routers.frontend.rule=Host(`frontend.localhost`)"
       - "traefik.http.services.frontend.loadbalancer.server.port=3000"
     volumes:
-      - ../petscare-frontend:/src/app
+      - ../../petscare-frontend:/src/app
     environment:
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
@@ -65,7 +63,7 @@ services:
     image: php:8.2-apache
     container_name: users-service
     build:
-      context: ../petscare-users-service
+      context: ../../petscare-users-service
     labels:
       - "traefik.http.routers.users.rule=Host(`users.localhost`)"
       - "traefik.http.services.users.loadbalancer.server.port=80"
@@ -73,10 +71,8 @@ services:
       - "traefik.http.middlewares.cors.headers.customrequestheaders.Access-Control-Allow-Methods=OPTIONS,POST"
       - "traefik.http.middlewares.cors.headers.customrequestheaders.Access-Control-Allow-Headers=*"
     volumes:
-      - ../petscare-users-service:/var/www/html
-      - ../petscare-users-service/docker/apache/000-default.conf:/etc/apache2/sites-available/000-default.conf
-    environment:
-      DATABASE_URL: mysql://root:rootpassword@petscare-users:3306/petscare-users
+      - ../../petscare-users-service:/var/www/html
+      - ../../petscare-users-service/docker/apache/000-default.conf:/etc/apache2/sites-available/000-default.conf
     depends_on:
       - petscare-users
     networks:
@@ -87,7 +83,7 @@ services:
     image: php:8.2-apache
     container_name: auth-service
     build:
-      context: ../petscare-auth-service
+      context: ../../petscare-auth-service
     labels:
       - "traefik.http.routers.auth.rule=Host(`auth.localhost`)"
       - "traefik.http.services.auth.loadbalancer.server.port=80"
@@ -95,8 +91,10 @@ services:
       - "traefik.http.middlewares.cors.headers.customrequestheaders.Access-Control-Allow-Methods=OPTIONS,POST"
       - "traefik.http.middlewares.cors.headers.customrequestheaders.Access-Control-Allow-Headers=*"
     volumes:
-      - ../petscare-auth-service:/var/www/html
-      - ../petscare-auth-service/docker/apache/000-default.conf:/etc/apache2/sites-available/000-default.conf
+      - ../../petscare-auth-service:/var/www/html
+      - ../../petscare-auth-service/docker/apache/000-default.conf:/etc/apache2/sites-available/000-default.conf
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - petscare-users
     networks:
@@ -107,15 +105,32 @@ services:
       image: php:8.2-apache
       container_name: pets-service
       build:
-        context: ../petscare-pets-service
+        context: ../../petscare-pets-service
       labels:
       - "traefik.http.routers.pets.rule=Host(`pets.localhost`)"
       - "traefik.http.services.pets.loadbalancer.server.port=80"
       volumes:
-        - ../petscare-pets-service:/var/www/html
-        - ../petscare-pets-service/docker/apache/000-default.conf:/etc/apache2/sites-available/000-default.conf
+        - ../../petscare-pets-service:/var/www/html
+        - ../../petscare-pets-service/docker/apache/000-default.conf:/etc/apache2/sites-available/000-default.conf
       depends_on:
         - petscare-pets
+      networks:
+        - petscare-network
+      command: bash -c "a2ensite 000-default.conf && a2enmod rewrite && composer run-script post-install-cmd && apache2-foreground"
+
+  announcements-service:
+      image: php:8.2-apache
+      container_name: announcements-service
+      build:
+        context: ../../petscare-announcements-service
+      labels:
+      - "traefik.http.routers.announcements.rule=Host(`announcements.localhost`)"
+      - "traefik.http.services.announcements.loadbalancer.server.port=80"
+      volumes:
+        - ../../petscare-announcements-service:/var/www/html
+        - ../../petscare-announcements-service/docker/apache/000-default.conf:/etc/apache2/sites-available/000-default.conf
+      depends_on:
+        - petscare-announcements
       networks:
         - petscare-network
       command: bash -c "a2ensite 000-default.conf && a2enmod rewrite && composer run-script post-install-cmd && apache2-foreground"
@@ -128,7 +143,7 @@ services:
     ports:
       - '8081:80'
     environment:
-      PMA_HOSTS: petscare-users, petscare-pets
+      PMA_HOSTS: petscare-users, petscare-pets, petscare-announcements
       PMA_PORT: 3306
       PMA_USER: root
       PMA_PASSWORD: rootpassword
@@ -161,9 +176,23 @@ services:
       - petscare-pets-data:/var/lib/mysql
     networks:
       - petscare-network
+ 
+  petscare-announcements:
+    image: mariadb:latest
+    container_name: petscare-announcements
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_USER: user
+      MYSQL_PASSWORD: rootpassword
+      MYSQL_DATABASE: petscare-announcements
+    volumes:
+      - petscare-announcements-data:/var/lib/mysql
+    networks:
+      - petscare-network
 
 volumes:
   petscare-users-data:
   petscare-pets-data:
+  petscare-announcements-data:
   redis_data:
     driver: local
